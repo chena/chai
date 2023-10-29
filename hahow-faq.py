@@ -73,24 +73,68 @@ def def_setup():
   df['embedding'] = df['embedding'].apply(ast.literal_eval)
   return df
 
-def searc_related_articles(
+def search_related_articles(
   query: str,
   df: pd.DataFrame,
   relatedness_fn=lambda x, y: 1 - spatial.distance.cosine(x, y),
   top_n: int = 10
 ) -> tuple[list[str], list[float]]:
   query_embedding_response = openai.Embedding.create(
-      model=EMBEDDING_MODEL,
-      input=query,
+    model=EMBEDDING_MODEL,
+    input=query,
   )
   query_embedding = query_embedding_response["data"][0]["embedding"]
   strings_and_relatednesses = [
-      (row["text"], relatedness_fn(query_embedding, row["embedding"]))
-      for i, row in df.iterrows()
+    (row["text"], relatedness_fn(query_embedding, row["embedding"]))
+    for i, row in df.iterrows()
   ]
   strings_and_relatednesses.sort(key=lambda x: x[1], reverse=True)
   strings, relatednesses = zip(*strings_and_relatednesses)
   return strings[:top_n], relatednesses[:top_n]
+
+def query_message(
+  query: str,
+  df: pd.DataFrame,
+  model: str,
+  token_budget: int
+) -> str:
+  articles, relatednesses = search_related_articles(query, df)
+  introduction = 'Use the below help articles from Hahow Help Center to answer the subsequent question. If the answer cannot be found in the articles, write "I could not find an answer."'
+  question = f"\n\nQuestion: {query}"
+  message = introduction
+  for article in articles:
+    next_article = f'\n\nHelp Article:\n"""\n{article}\n"""'
+    if (
+        num_tokens(message + next_article + question, model=model)
+        > token_budget
+    ):
+        break
+    else:
+        message += next_article
+  return message + question
+
+def ask(
+  query: str,
+  df: pd.DataFrame,
+  model: str = GPT_MODEL,
+  token_budget: int = 4096 - 500,
+  print_message: bool = False,
+) -> str:
+  message = query_message(query, df, model=model, token_budget=token_budget)
+  if print_message:
+    print(message)
+  messages = [
+    {"role": "system", "content": "You are Hahow's customer support assistant. You answer questions Hahow's features and issues that users may encounter."},
+    {"role": "user", "content": message},
+  ]
+  response = openai.ChatCompletion.create(
+    model=model,
+    messages=messages,
+    temperature=0
+  )
+  response_message = response["choices"][0]["message"]["content"]
+  return response_message
+
 
 """step 1: fetch data"""
 # documents = fetch_articles()
@@ -108,10 +152,27 @@ def searc_related_articles(
 df = def_setup()
 
 """step 6: calculate relatedness"""
-strings, relatednesses = searc_related_articles("要如何取得完課證明？", df, top_n=5)
-for string, relatedness in zip(strings, relatednesses):
-  print(f"{relatedness=:.3f}")
-  print(string)
+# strings, relatednesses = search_related_articles("要如何取得完課證明？", df, top_n=5)
+# for string, relatedness in zip(strings, relatednesses):
+#   print(f"{relatedness=:.3f}")
+#   print(string)
 
 """step 7: ask"""
-
+question_bank = [
+  'Hahowise 學習助教是誰？',
+  'Hahowise 要怎麼使用？',
+  '影片卡住怎麼辦？',
+  '錯過直播怎麼辦？',
+  '要如何取得完課證明？',
+  '課程開課後，開始觀看前還可以退課嗎？',
+  '退款後 coupon 會退嗎？',
+  '募資失敗會退款嗎？',
+  '老師不理我怎麼辦？',
+  'Hahow 2024 會有什麼新功能？',
+]
+num = 0
+for q in question_bank:
+  num += 1
+  print('{}. {}'.format(str(num), q))
+  ans = ask(q, df)
+  print(ans + '\n')
