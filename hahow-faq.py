@@ -19,7 +19,7 @@ def num_tokens(text: str, model: str = GPT_MODEL) -> int:
   encoding = tiktoken.encoding_for_model(model)
   return len(encoding.encode(text))
 
-def token_check(document: list):
+def token_check(documents: list):
   doc_token_count = [num_tokens(d) for d in documents]
   print(sorted(doc_token_count))
 
@@ -42,7 +42,7 @@ def fetch_articles() -> list:
   # seg_list = jieba.cut(doc.translate(translator))
   return [doc.translate(translator) for doc in documents]
 
-def calculate_embeddings(documents: list):
+def calculate_embeddings(document: list):
   response = openai.Embedding.create(model=EMBEDDING_MODEL, input=documents)
   embeddings = [e['embedding'] for e in response['data']]
   df = pd.DataFrame({'text': documents, 'embedding': embeddings})
@@ -156,7 +156,7 @@ def ask(
 qa_without_rag()
 
 """step 5: set up RAG"""
-# df = df_setup()
+df = df_setup()
 
 """step 6: calculate relatedness"""
 # strings, relatednesses = search_related_articles("要如何取得完課證明？", df, top_n=5)
